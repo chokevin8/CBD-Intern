@@ -3,7 +3,7 @@
 #https://bioconductor.org/packages/release/bioc/vignettes/limma/inst/doc/usersguide.pdf
 
 rm(list = ls())
-setwd("C:/Users/choke/OneDrive/Desktop/")
+setwd("C:/Users/choke/OneDrive/Desktop/CBD_Intern")
 
 #call in all relevant library
 library(survival)
@@ -82,6 +82,10 @@ colnames(design) <- c("X40.s", "X50.s", "X60.s", "X70.s", "X80.s")
 #use voom to fit a linear model to log2 CPM and calculate residuals. $E gives 
 #normalized log2 counts
 v <- voom(y, design, plot = TRUE)$E
+#we get an error here saying: Error in approxfun(l, rule = 2, ties = list("ordered", mean)) : 
+#need at least two non-NA values to interpolate
+#error = our data has no replicates...need technical replicates (check limma 11.3 "technical replicates")
+
 rnaseq_patients_v <- v
 
 #use limma function (lmfit and eBayes) to perform differential expression testing, objects in fit are related to statistical testing
