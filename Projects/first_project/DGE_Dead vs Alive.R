@@ -80,6 +80,8 @@ colnames(design) <- c("Dead","Alive")
 #use voom to fit a linear model to log2 CPM and calculate residuals. $E gives 
 #normalized log2 counts
 v <- voom(y, design, plot = TRUE)$E
+#we get an error here saying: Error in approxfun(l, rule = 2, ties = list("ordered", mean)) : 
+#need at least two non-NA values to interpolate
 rnaseq_patients_v <- v
 
 #use limma function (lmfit and eBayes) to perform differential expression testing, objects in fit are related to statistical testing
