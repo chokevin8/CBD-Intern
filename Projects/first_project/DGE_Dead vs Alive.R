@@ -85,8 +85,11 @@ rnaseq_patients_v <- v
 #use limma function (lmfit and eBayes) to perform differential expression testing, objects in fit are related to statistical testing
 #
 fit <- lmFit(v, design)
-fit <- eBayes(fit)
-DEG_results <- topTreat(fit, coef = ncol(design), sort.by = "p")
+cont.matrix <- makeContrasts(DeadvsAlive = Dead - Alive, levels = design)
+fit2 <- contrasts.fit(fit, cont.matrix)
+fit2 <- eBayes(fit2)
+
+DEG_results <- topTable(fit2, adjust.method = "BH", sort.by = "p")
 View(DEG_results)
 print(rownames(DEG_results))
 
