@@ -83,12 +83,13 @@ v <- voom(y, design, plot = TRUE)$E
 rnaseq_patients_v <- v
 
 #use limma function (lmfit and eBayes) to perform differential expression testing, objects in fit are related to statistical testing
-#
+
 fit <- lmFit(v, design)
 cont.matrix <- makeContrasts(MalevsFemale = Male - Female, levels = design)
 fit2 <- contrasts.fit(fit, cont.matrix)
 fit2 <- eBayes(fit2)
 
+#print results
 DEG_results <- topTable(fit2, adjust.method = "BH", sort.by = "p")
 View(DEG_results)
 print(rownames(DEG_results))
