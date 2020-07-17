@@ -3,7 +3,7 @@
 #https://bioconductor.org/packages/release/bioc/vignettes/limma/inst/doc/usersguide.pdf
 
 rm(list = ls())
-setwd("C:/Users/choke/OneDrive/Desktop/CBD_Intern")
+setwd("C:/Users/choke/OneDrive/Desktop")
 
 #call in all relevant library
 library(survival)
