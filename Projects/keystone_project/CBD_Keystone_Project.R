@@ -8,7 +8,6 @@ rm(list = ls())
 setwd("C:/Users/choke/OneDrive/Desktop")
 
 #Call in all relevant packages:
-library(ROntoTools)
 library(graph)
 library(tidyverse)
 library(limma)
@@ -35,7 +34,7 @@ read_rnaseq <- function(rnaseq_file){
     rnaseq$gene <- str_remove_all(rnaseq$gene, "\\?")
     rnaseq$gene <- str_remove_all(rnaseq$gene, "\\|.*$")
     
-    #remove all empty spaces
+    #remove all empty spaces for genes
     rnaseq[gene == ""] <- NA
     rnaseq <- drop_na(rnaseq, gene)
     
@@ -71,7 +70,9 @@ log2CPM_normal <- voom(dge_normal, plot = FALSE)$E
 #after we get log2FC value for each gene, we are done with edgeR/limma + voom.
 
 
+
 #now we download and parse homo sapiens keggPathways using kpg:
+library(ROntoTools)
 kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
 
 #now we store pathwaynames in object kpn so we can select
@@ -82,9 +83,13 @@ pDisRes <- pDis()
 #x= fold change vector
 
 
-#use https://bioconductor.org/packages/release/data/annotation/manuals/org.Hs.eg.db/man/org.Hs.eg.db.pdf
-#which is org.Hs.eg.db package to map
+#these are to map kegg pathway to entrez id
+library(org.Hs.eg.db)
+#somehow use org.Hs.egPATH
+#look at: https://davetang.org/muse/2013/12/16/bioconductor-annotation-packages/
+#maybe also: http://www.imsbio.co.jp/RGM/R_rdfile?f=org.Hs.eg.db/man/org.Hs.egBASE.Rd&d=R_BC
 
-#or #https://www.bioconductor.org/packages/release/data/annotation/manuals/KEGG.db/man/KEGG.db.pdf
-#which KEGGPATHID2EXTID can also do it <- try this one, might be better than previous one
+    #select vector of fc values?)
+
+
 
