@@ -1,13 +1,13 @@
 #this is the keystone project
 #credits: 
 
-#remove all objects
+#Remove all objects
 rm(list = ls())
 
-#set working directory to desktop
+#Set working directory to desktop
 setwd("C:/Users/choke/OneDrive/Desktop")
 
-#call in all relevent packages:
+#Call in all relevant packages:
 library(ROntoTools)
 library(graph)
 library(tidyverse)
@@ -17,13 +17,17 @@ library(dtplyr)
 library(data.table)
 library(psych)
 
-#function to read rna seq data file & cleaning up
+#Function to read rna-seq data file & clean up
+#This function is dependent to tidyverse/data.table package
+#Therefore, you need to install those, if it is not installed yet
+#If there is changes in those packages make sure everything is ok
+vi
 read_rnaseq <- function(rnaseq_file){
-    require(tidyverse)
-    require(data.table)
-    rnaseq <- fread(rnaseq_file)
     
-    #change the column name "V1" in rnaseq data to "gene"
+    rnaseq <- fread(rnaseq_file)
+   
+    
+    #change the column name "V1" in rna-seq data to "gene"
     rnaseq <- setnames(rnaseq, "V1", "gene")
     
     #remove all strings "\\?" and "\\|.*$" from all elements of rnaseq$gene
@@ -41,15 +45,46 @@ read_rnaseq <- function(rnaseq_file){
     #from rnaseq$gene, take its column names and make them the rownames of rnaseq 
     rnaseq <- column_to_rownames(rnaseq, var = "gene")
     
-    #This function is dependent to tidyverse/data.table package.
-    #Therefore, you need to install those, if it is not installed yet.
-    #If there is changes in those packages make sure everything is OK.
     return(rnaseq)
 }
 
-#use read_rnaseq function to read & clean up the read data
-rnaseq_patients <- read_rnaseq("RNASeq_PAAD")
+#use read_rnaseq function to read & clean up the cancer and normal patient's data
+rnaseq_cancer <- read_rnaseq("RNASeq_PAAD")
+rnaseq_normal <- read_rnaseq("RNASeq_PAAD_Normal")
+
+#rnaseq_patients <- cbind(rnaseq_cancer,rnaseq_normal) 
+
+#make a formal DGEList (a different class required for voom) for cancer and normal:
+dge_cancer <- DGEList(rnaseq_cancer, genes = rownames(rnaseq_cancer))
+dge_normal <- DGEList(rnaseq_normal, genes = rownames(rnaseq_normal))
+
+#calculate normalization factors for voom
+dge_cancer <- calcNormFactors(dge_cancer)
+dge_normal <- calcNormFactors(dge_normal)
+
+#perform TMM normalization & log2CPM, voom does this all by itself, store log2CPM
+#normalized values
+log2CPM_cancer <- voom(dge_cancer, plot = FALSE)$E
+log2CPM_normal <- voom(dge_normal, plot = FALSE)$E
+
+#from here we need to calculate log2FC for each gene: rowSums...?
+#after we get log2FC value for each gene, we are done with edgeR/limma + voom.
 
 
-#make a formal DGEList (a different class required for voom)
-y <- DGEList(rnaseq_patients, genes = rownames(rnaseq_patients))
+#now we download and parse homo sapiens keggPathways using kpg:
+kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
+
+#now we store pathwaynames in object kpn so we can select
+kpn <- keggPathwayNames("hsa", updateCache = TRUE, verbose = TRUE)
+
+#now perform pDis
+pDisRes <- pDis()
+#x= fold change vector
+
+
+#use https://bioconductor.org/packages/release/data/annotation/manuals/org.Hs.eg.db/man/org.Hs.eg.db.pdf
+#which is org.Hs.eg.db package to map
+
+#or #https://www.bioconductor.org/packages/release/data/annotation/manuals/KEGG.db/man/KEGG.db.pdf
+#which KEGGPATHID2EXTID can also do it <- try this one, might be better than previous one
+
