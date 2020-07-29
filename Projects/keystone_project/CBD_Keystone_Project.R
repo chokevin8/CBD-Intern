@@ -5,7 +5,7 @@
 rm(list = ls())
 
 #Set working directory to project folder.
-setwd("C:/Users/choke/OneDrive/Desktop/CBD_Intern/Projects/keystone_project")
+#setwd("C:/Users/choke/OneDrive/Desktop/CBD_Intern/Projects/keystone_project")
 
 #Call in all relevant packages.
 library(graph)
@@ -43,8 +43,8 @@ read_rnaseq <- function(rnaseq_file){
 }
 
 #Use read_rnaseq function to read & clean up the cancer and normal patient's data
-rnaseq_cancer <- read_rnaseq("RNASeq_PAAD")
-rnaseq_normal <- read_rnaseq("RNASeq_PAAD_Normal")
+rnaseq_cancer <- read_rnaseq("/Data/RNASeq_PAAD")
+rnaseq_normal <- read_rnaseq("/Data/RNASeq_PAAD_Normal")
 
 #Combine cancer and normal data into one. 
 rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
