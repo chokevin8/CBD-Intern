@@ -4,8 +4,8 @@
 #Remove all objects
 rm(list = ls())
 
-#Set working directory to desktop
-#setwd("C:/Users/choke/OneDrive/Desktop")
+#Set working directory to project folder
+setwd("C:/Users/choke/OneDrive/Desktop/CBD_Intern/Projects/keystone_project")
 
 #Call in all relevant packages:
 library(graph)
@@ -50,46 +50,35 @@ read_rnaseq <- function(rnaseq_file){
 rnaseq_cancer <- read_rnaseq("RNASeq_PAAD")
 rnaseq_normal <- read_rnaseq("RNASeq_PAAD_Normal")
 
+#combine these two into one
+rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
 
-#make a formal DGEList (a different class required for voom) for cancer and normal:
-dge_cancer <- DGEList(rnaseq_cancer, genes = rownames(rnaseq_cancer))
-dge_normal <- DGEList(rnaseq_normal, genes = rownames(rnaseq_normal))
+#make a formal DGEList (a different class required for voom) for all:
+dge_all <- DGEList(rnaseq_all, genes = rownames(rnaseq_all))
 
 #calculate normalization factors for voom
-dge_cancer <- calcNormFactors(dge_cancer)
-dge_normal <- calcNormFactors(dge_normal)
+dge_all <- calcNormFactors(dge_all)
 
 #need group matrix for DEG analysis:
-#need to combine rnaseq_cancer and rnaseq_normal to make dimensions equal!!
-#cancer_list <- rep("Cancer",ncol(rnaseq_cancer))
-#normal_list <- rep("Normal",ncol(rnaseq_normal))
-list <- c(cancer_list,normal_list)
-Group <- factor(list, levels = c("Cancer","Normal"))
+cancer_all <- rep("Cancer",ncol(rnaseq_cancer))
+normal_all <- rep("Normal",ncol(rnaseq_normal))
+vec_all <- c(cancer_all,normal_all)
+Group <- factor(vec_all, levels = c("Cancer","Normal"))
 design <- model.matrix(~0 + Group)
 
-#perform TMM normalization & log2CPM, voom does this all by itself, store log2CPM
-#normalized values
-voom_cancer <- voom(dge_cancer,design, plot = FALSE)$E
-voom_normal <- voom(dge_normal,design, plot = FALSE)$E
+#perform TMM normalization & log2CPM, voom does this all by itself
+voom_all <- voom(dge_all,design, plot = FALSE)$E
 
 #now perform contrasts and perform DEG:
-
-
-
-
-
-#from here we need to calculate log2FC for each gene
-#log2CPM_normal_value <- rowSums(log2CPM_normal, na.rm = FALSE, dims = 1)/ncol(log2CPM_normal)
-#log2CPM_cancer_value <- rowSums(log2CPM_cancer, na.rm = FALSE, dims = 1)/ncol(log2CPM_cancer)
-
-#log2CPM_normal <- log2CPM_normal %>% cbind(log2CPM_normal_value)
-#log2CPM_cancer <- log2CPM_cancer %>% cbind(log2CPM_cancer_value)
-
-#log2FC_value <- log2CPM_cancer_value / log2CPM_normal_value
+fit <- lmFit(voom_all,design)
+contr <- makeContrasts(GroupCancer - GroupNormal, levels = colnames(coef(fit)))
+temp <- contrasts.fit(fit, contr)
+temp <- eBayes(temp)
+DEGTable <- topTable(temp, sort.by = "P", number = Inf)
 
 #we got log2FC value for each gene, so we are done with preprocessing with edgeR/limma + voom.
 
-#we need to map kegg pathway to entrez id, but tcga given data is in HGNC gene symbols
+#more preprocessing: we need to map kegg pathway to entrez id, but tcga given data is in HGNC gene symbols
 #first convert HGNC gene symbol to entrez id using gprofiler2 package
 library(gprofiler2)
 entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_cancer))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
@@ -114,9 +103,6 @@ for (i in length(KEGG_gene_id)) {
     #}
     i = i + 100
 }
-#when you get KEGG_pathway_id, merge them all together. 
-
-a <- keggLink("pathway",KEGG_gene_id)
 
 
 #now we download and parse homo sapiens keggPathways using kpg:
@@ -127,4 +113,4 @@ kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
 kpn <- keggPathwayNames("hsa", updateCache = TRUE, verbose = TRUE)
 
 #now finally perform pDis
-pDisRes <- pDis(x = log2FC_value, graphs = kpg, nboot = 2000, verbose = FALSE )
+pDisRes <- pDis(x = DEGTable$logFC, graphs = kpg, ref = rownames(DEGTable), nboot = 2000, verbose = FALSE )
