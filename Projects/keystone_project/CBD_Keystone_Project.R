@@ -49,6 +49,13 @@ rnaseq_normal <- read_rnaseq("RNASeq_PAAD_Normal")
 #Combine cancer and normal data into one. 
 rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
 
+#since duplicate names will happen for patients with normal data, add string "-NORMAL" to them. 
+#Then assign those names back to column of rnaseq_all
+
+temp <- as.vector(colnames(rnaseq_all))
+colnames(rnaseq_all) <- make.unique(temp, sep = "_Normal")
+colnames(rnaseq_all) <- str_replace_all(colnames(rnaseq_all),"_Normal1","-Normal")
+
 #Make a formal DGEList (a different class required for voom) for all.
 dge_all <- DGEList(rnaseq_all, genes = rownames(rnaseq_all))
 
@@ -94,9 +101,9 @@ for (i in length(KEGG_gene_id)) {
     temp <- KEGG_gene_id[i - 99:i]
     temp_list <- keggLink("pathway", temp)
     KEGG_pathway_id <- c(KEGG_pathway_id,temp_list)
-    #if (i > length(KEGG_gene_id)) {
-       # break
-    #}
+    if (i > length(KEGG_gene_id)) {
+       break
+    }
     i = i + 100
 }
 
