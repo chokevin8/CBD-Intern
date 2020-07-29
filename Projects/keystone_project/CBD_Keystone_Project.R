@@ -4,11 +4,11 @@
 #Remove all objects.
 rm(list = ls())
 
-#Set working directory to project folder.
-#setwd("C:/Users/choke/OneDrive/Desktop/CBD_Intern/Projects/keystone_project")
-
 #Call in all relevant packages.
 library(graph)
+library(ROntoTools)
+library(KEGGREST)
+library(gprofiler2)
 library(tidyverse)
 library(limma)
 library(edgeR)
@@ -20,12 +20,10 @@ read_rnaseq <- function(rnaseq_file){
     
     rnaseq <- fread(rnaseq_file)
    
-    
     #change the column name "V1" in rna-seq data to "gene"
     rnaseq <- setnames(rnaseq, "V1", "gene")
     
     #remove all strings "\\?" and "\\|.*$" from all elements of rnaseq$gene
-    
     rnaseq$gene <- str_remove_all(rnaseq$gene, "\\?")
     rnaseq$gene <- str_remove_all(rnaseq$gene, "\\|.*$")
     
@@ -51,7 +49,6 @@ rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
 
 #since duplicate names will happen for patients with normal data, add string "-NORMAL" to them. 
 #Then assign those names back to column of rnaseq_all
-
 temp <- as.vector(colnames(rnaseq_all))
 colnames(rnaseq_all) <- make.unique(temp, sep = "_Normal")
 colnames(rnaseq_all) <- str_replace_all(colnames(rnaseq_all),"_Normal1","-Normal")
@@ -83,15 +80,12 @@ DEGTable <- topTable(temp, sort.by = "P", number = Inf)
 
 #More preprocessing: We need to map KEGG pathway to Entrez id, but input TCGA data is in HGNC gene symbols.
 #First, convert HGNC gene symbol to Entrez id using gprofiler2 package.
-library(gprofiler2)
 Entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_cancer))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
 
 #Transform Entrez to KEGG genes by putting on a "hsa:".
 KEGG_gene_id <- paste0("hsa:",Entrez_id)
 
 #Then, map Entrez id to KEGG hsa (homo sapiens) pathways using KEGGREST package.
-library(KEGGREST)
-
 #When supplying KEGG_gene_id at once, it cannot handle the amount of inputs. In fact,
 #it handles around 400 inputs at once. KEGG_gene_id has 17260 outputs. Therefore, we need to create a for loop. 
 
@@ -107,9 +101,16 @@ for (i in length(KEGG_gene_id)) {
     i = i + 100
 }
 
-#Now we download and parse homo sapiens keggPathways using kpg.
+# This gives an error:"Error in curl::curl_fetch_memory(url, handle = handle) : 
+# Send failure: Connection reset by peer"".
+# But trying this will not give an error:
 
-library(ROntoTools)
+# a <- KEGG_gene_id[1:100]
+# b <- keggLink("pathway", a)
+# head(b) matches gene to pathway.
+# So i am wondering what the error is about. 
+
+#Now we download and parse homo sapiens keggPathways using kpg.
 kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
 
 #Store pathway names in kpn.
