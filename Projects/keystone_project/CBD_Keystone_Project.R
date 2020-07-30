@@ -6,6 +6,8 @@ rm(list = ls())
 
 #Call in all relevant packages.
 library(graph)
+library(annotate)
+library(hgu133a2.db)
 library(ROntoTools)
 library(KEGGREST)
 library(gprofiler2)
@@ -13,6 +15,7 @@ library(tidyverse)
 library(limma)
 library(edgeR)
 library(dtplyr)
+library(plyr)
 library(data.table)
 
 #Function to read rna-seq data file & clean up.
@@ -41,8 +44,8 @@ read_rnaseq <- function(rnaseq_file){
 }
 
 #Use read_rnaseq function to read & clean up the cancer and normal patient's data
-rnaseq_cancer <- read_rnaseq("/Data/RNASeq_PAAD")
-rnaseq_normal <- read_rnaseq("/Data/RNASeq_PAAD_Normal")
+rnaseq_cancer <- read_rnaseq(str_c(as.character(getwd()),"/Data/RNASeq_PAAD"))
+rnaseq_normal <- read_rnaseq(str_c(as.character(getwd()),"/Data/RNASeq_PAAD_Normal"))
 
 #Combine cancer and normal data into one. 
 rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
@@ -78,27 +81,37 @@ DEGTable <- topTable(temp, sort.by = "P", number = Inf)
 
 #We are done with preprocessing with edgeR/limma + voom since we have a DEGTable. 
 
+
 #More preprocessing: We need to map KEGG pathway to Entrez id, but input TCGA data is in HGNC gene symbols.
 #First, convert HGNC gene symbol to Entrez id using gprofiler2 package.
-Entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_cancer))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
+Entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_all))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
 
 #Transform Entrez to KEGG genes by putting on a "hsa:".
 KEGG_gene_id <- paste0("hsa:",Entrez_id)
+
+#work in progress: bind KEGG_gene_id to DEGTable
+#DEGTable <- rbind.fill(as.data.frame(t(DEGTable)),as.data.frame(t(KEGG_gene_id)))
+
+
+#Now we make the gene names of DEGTable in to probe names of affymetrix. 
+#Gene_list <- rownames(DEGTable)
+#Mapped_probes <- mappedkeys(hgu133a2SYMBOL)
+#Probes_gene_id <- as.data.frame(hgu133a2SYMBOL[Mapped_probes])
+#result_list <- Probes_gene_id[which(Probes_gene_id$symbol %in% Gene_list),]
+#work in progress: match two lists...
+
 
 #Then, map Entrez id to KEGG hsa (homo sapiens) pathways using KEGGREST package.
 #When supplying KEGG_gene_id at once, it cannot handle the amount of inputs. In fact,
 #it handles around 400 inputs at once. KEGG_gene_id has 17260 outputs. Therefore, we need to create a for loop. 
 
-i = 100
+i = 2
 KEGG_pathway_id = c()
 for (i in length(KEGG_gene_id)) {
-    temp <- KEGG_gene_id[i - 99:i]
+    temp <- KEGG_gene_id[i - 1:i]
     temp_list <- keggLink("pathway", temp)
     KEGG_pathway_id <- c(KEGG_pathway_id,temp_list)
-    if (i > length(KEGG_gene_id)) {
-       break
-    }
-    i = i + 100
+    i = i + 1
 }
 
 # This gives an error:"Error in curl::curl_fetch_memory(url, handle = handle) : 
@@ -109,6 +122,7 @@ for (i in length(KEGG_gene_id)) {
 # b <- keggLink("pathway", a)
 # head(b) matches gene to pathway.
 # So i am wondering what the error is about. 
+
 
 #Now we download and parse homo sapiens keggPathways using kpg.
 kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
