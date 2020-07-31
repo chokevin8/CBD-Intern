@@ -6,11 +6,11 @@ rm(list = ls())
 
 #Call in all relevant packages.
 library(graph)
-library(annotate)
-library(hgu133a2.db)
 library(ROntoTools)
 library(KEGGREST)
 library(gprofiler2)
+library(annotate)
+library(hgu133a2.db)
 library(tidyverse)
 library(limma)
 library(edgeR)
@@ -26,7 +26,7 @@ read_rnaseq <- function(rnaseq_file){
     #change the column name "V1" in rna-seq data to "gene"
     rnaseq <- setnames(rnaseq, "V1", "gene")
     
-    #remove all strings "\\?" and "\\|.*$" from all elements of rnaseq$gene
+    #remove all strings "?" and zero or more instances of "|." from all elements of rnaseq$gene
     rnaseq$gene <- str_remove_all(rnaseq$gene, "\\?")
     rnaseq$gene <- str_remove_all(rnaseq$gene, "\\|.*$")
     
@@ -79,6 +79,8 @@ temp <- contrasts.fit(fit, contr)
 temp <- eBayes(temp)
 DEGTable <- topTable(temp, sort.by = "P", number = Inf)
 
+rm(temp)
+
 #We are done with preprocessing with edgeR/limma + voom since we have a DEGTable. 
 
 
@@ -94,11 +96,10 @@ KEGG_gene_id <- paste0("hsa:",Entrez_id)
 
 
 #Now we make the gene names of DEGTable in to probe names of affymetrix. 
-#Gene_list <- rownames(DEGTable)
-#Mapped_probes <- mappedkeys(hgu133a2SYMBOL)
-#Probes_gene_id <- as.data.frame(hgu133a2SYMBOL[Mapped_probes])
-#result_list <- Probes_gene_id[which(Probes_gene_id$symbol %in% Gene_list),]
-#work in progress: match two lists...
+Gene_list <- rownames(DEGTable)
+Mapped_probes <- mappedkeys(hgu133a2SYMBOL)
+Probes_gene_id <- as.data.frame(hgu133a2SYMBOL[Mapped_probes])
+result <- Probes_gene_id[which(Probes_gene_id$symbol %in% Gene_list),]s
 
 
 #Then, map Entrez id to KEGG hsa (homo sapiens) pathways using KEGGREST package.
