@@ -55,6 +55,7 @@ rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
 temp <- as.vector(colnames(rnaseq_all))
 colnames(rnaseq_all) <- make.unique(temp, sep = "_Normal")
 colnames(rnaseq_all) <- str_replace_all(colnames(rnaseq_all),"_Normal1","-Normal")
+rm(temp)
 
 #Make a formal DGEList (a different class required for voom) for all.
 dge_all <- DGEList(rnaseq_all, genes = rownames(rnaseq_all))
@@ -66,60 +67,77 @@ dge_all <- calcNormFactors(dge_all)
 cancer_all <- rep("Cancer",ncol(rnaseq_cancer))
 normal_all <- rep("Normal",ncol(rnaseq_normal))
 vec_all <- c(cancer_all,normal_all)
-Group <- factor(vec_all, levels = c("Cancer","Normal"))
-design <- model.matrix(~0 + Group)
+group <- factor(vec_all, levels = c("Cancer","Normal"))
+design <- model.matrix(~0 + group)
 
 #Perform TMM normalization & log2CPM, voom does this all by itself.
 voom_all <- voom(dge_all,design, plot = FALSE)$E
 
 #Now perform contrasts and finally perform DGE:
 fit <- lmFit(voom_all,design)
-contr <- makeContrasts(GroupCancer - GroupNormal, levels = colnames(coef(fit)))
+contr <- makeContrasts(groupCancer - groupNormal, levels = colnames(coef(fit)))
 temp <- contrasts.fit(fit, contr)
 temp <- eBayes(temp)
-DEGTable <- topTable(temp, sort.by = "P", number = Inf)
-
-rm(temp)
+degTable <- topTable(temp, sort.by = "P", number = Inf)
 
 #We are done with preprocessing with edgeR/limma + voom since we have a DEGTable. 
 
 
 #More preprocessing: We need to map KEGG pathway to Entrez id, but input TCGA data is in HGNC gene symbols.
 #First, convert HGNC gene symbol to Entrez id using gprofiler2 package.
-Entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_all))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
+entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_all))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
 
 #Transform Entrez to KEGG genes by putting on a "hsa:".
-KEGG_gene_id <- paste0("hsa:",Entrez_id)
+kegg_gene_id <- paste0("hsa:",entrez_id)
 
 #work in progress: bind KEGG_gene_id to DEGTable
 #DEGTable <- rbind.fill(as.data.frame(t(DEGTable)),as.data.frame(t(KEGG_gene_id)))
-
+#set column name to "entrez"
 
 #Now we make the gene names of DEGTable in to probe names of affymetrix. 
-Gene_list <- rownames(DEGTable)
-Mapped_probes <- mappedkeys(hgu133a2SYMBOL)
-Probes_gene_id <- as.data.frame(hgu133a2SYMBOL[Mapped_probes])
-result <- Probes_gene_id[which(Probes_gene_id$symbol %in% Gene_list),]s
+#gene_list <- rownames(degTable)
+#mapped_probes <- mappedkeys(hgu133a2SYMBOL)
+#probe_n_sym <- as.data.frame(hgu133a2SYMBOL[mapped_probes])
+#result <- probe_n_sym[which(probe_n_sym$symbol %in% gene_list),]
+#result_1 <- result[match(gene_list,result$symbol),]
 
+gene_list <- rownames(degTable)
+gene_list <- gene_list %>% str_remove_all("[:blank:]") %>% str_remove_all("\\-AS[:digit:]") %>% str_remove_all("\\-AS") %>% str_remove_all("\\-") %>% str_to_upper()
+mapped_probes <- read_tsv(str_c(as.character(getwd()),"/Data/GeneAnnot_191128_unmerge.tsv"))
+mapped_probes <- mapped_probes %>% 
+dplyr::select(c(AffyID, GeneSymbol, Sensitivity, Specificity)) %>%
+dplyr::rename(Gene_Name = GeneSymbol) %>% 
+drop_na(c(Sensitivity, Specificity, Gene_Name)) 
+#didn't filter for sensitivity or specificity
+
+mapped_probes$Gene_Name <- mapped_probes$Gene_Name %>% str_remove_all("[:blank:]") %>% str_remove_all("\\-AS[:digit:]") %>% str_remove_all("\\-AS") %>% str_remove_all("\\-") %>% str_to_upper()
+probe_n_sym <- cbind(mapped_probes$AffyID,mapped_probes$Gene_Name)
+probe_n_sym <- as.data.frame(probe_n_sym)
+result <- probe_n_sym[which(probe_n_sym$V2 %in% gene_list),]
+result_1 <- result[match(gene_list,result$V2),]
+
+#do separate_rows(불러온데이터, GeneSymbol, sep = "[:blank:]" or sep = "") in above?
 
 #Then, map Entrez id to KEGG hsa (homo sapiens) pathways using KEGGREST package.
 #When supplying KEGG_gene_id at once, it cannot handle the amount of inputs. In fact,
 #it handles around 400 inputs at once. KEGG_gene_id has 17260 outputs. Therefore, we need to create a for loop. 
 
-i = 2
-KEGG_pathway_id = c()
-for (i in length(KEGG_gene_id)) {
-    temp <- KEGG_gene_id[i - 1:i]
-    temp_list <- keggLink("pathway", temp)
-    KEGG_pathway_id <- c(KEGG_pathway_id,temp_list)
-    i = i + 1
-}
+#i = 2
+#KEGG_pathway_id = c()
+#for (i in length(KEGG_gene_id)) {
+#    temp <- KEGG_gene_id[i - 1:i]
+ #   temp_list <- keggLink("pathway", temp)
+#    KEGG_pathway_id <- c(KEGG_pathway_id,temp_list)
+ #   i = i + 1
+#}
 
-# This gives an error:"Error in curl::curl_fetch_memory(url, handle = handle) : 
+#temp_list <- keggLink("pathway", kegg_gene_id)
+    
+# Both gives an error:"Error in curl::curl_fetch_memory(url, handle = handle) : 
 # Send failure: Connection reset by peer"".
 # But trying this will not give an error:
 
-# a <- KEGG_gene_id[1:100]
+# a <- kegg_gene_id[1:100]
 # b <- keggLink("pathway", a)
 # head(b) matches gene to pathway.
 # So i am wondering what the error is about. 
@@ -132,8 +150,9 @@ kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
 kpn <- keggPathwayNames("hsa", updateCache = TRUE, verbose = TRUE)
 
 #Finally perform primary disregulation (pDis).
-pDisRes <- pDis(x = DEGTable$logFC, graphs = kpg, ref = rownames(DEGTable), nboot = 2000, verbose = FALSE )
+pDisRes <- pDis(x = degTable$logFC, graphs = kpg, ref = rownames(degTable), nboot = 2000, verbose = FALSE )
 
 #We have the result of most perturbed pathways ordered by pValue. Stored in "Result". 
-Result <- Summary(pDisRes, pathNames = kpn, totalpDis = FALSE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
+result <- Summary(pDisRes, pathNames = kpn, totalpDis = FALSE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
+
 
