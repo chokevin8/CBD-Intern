@@ -8,6 +8,7 @@ library(graph)
 library(ROntoTools)
 library(KEGGREST)
 library(gprofiler2)
+library(GeneBook)
 library(tidyverse)
 library(limma)
 library(edgeR)
@@ -77,21 +78,46 @@ temp <- contrasts.fit(fit, contr)
 temp <- eBayes(temp)
 degTable <- topTable(temp, sort.by = "P", number = Inf)
 
-#We are done with edgeR/limma + voom since we have a DEGTable.
-#More pre-processing: We need to map KEGG pathway to Entrez id, but input TCGA data is in HGNC gene symbols.
-#First, convert HGNC gene symbol to Entrez id using gprofiler2 package.
-entrez_id <- as.vector(gconvert(query = (as.vector(rownames(rnaseq_all))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = FALSE)$target)
+#Take out genes that contain "LOC" in degTable: (problem: what if there are other genes that contain "LOC"?)
+degTable <- dplyr::filter(degTable, !grepl("LOC", rownames(degTable)))
 
-#Transform Entrez to KEGG genes by putting on a "hsa:".
-kegg_gene_id <- paste0("hsa:",entrez_id)
+#We are done with edgeR/limma + voom since we have a DEGTable.
+#Now, convert input TCGA gene symbol to Entrez id using GeneCard and gprofiler2 package. 
+
+gc_list <- as.data.frame((GeneBook::genecard_id))
+gc_list<- dplyr::filter(gc_list, !grepl("Ensembl",gc_list$subname))
+gc_list <- dplyr::filter(gc_list, !grepl("HGNC", gc_list$subname))
+gc_list <- dplyr::filter(gc_list, !grepl("LOC", gc_list$subname))
+#gc_list <- str_remove_all(gc_list$subname, "[:blank:]")
+
+#.SD = subsets all of gc_list except gene (so subname) specified in the "by" argument, and we use lapply to paste the characters together for 
+#subnames and group it by the gene names. 
+gc_list <- as.data.table(gc_list)
+collapsed_gc_list <- gc_list[, base::lapply(.SD, paste0, collapse=" "), by=gc_list$gene]
+collapsed_gc_list <- collapsed_gc_list %>% as.matrix() %>% str_remove_all("[:blank:]") %>% str_to_upper()
+
+#Now match gc_list to rownames(degTable)
+temp <- rownames(degTable)
+temp <- str_to_upper(temp)
+temp <- as.data.frame(temp)
+colnames(temp) <- "V1"
+
+a <- temp[match(temp$V1,collapsed_gc_list),]
+
+entrez <- as.vector(gconvert(query = (as.vector(rownames(degTable))), organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = FALSE)$target)
+
+#Transform Entrez to usable form by putting on a "hsa:".
+entrez <- paste0("hsa:",entrez)
 
 #Add a column named "entrez" with the KEGG gene id's in degTable.
-
+degTable <- cbind(degTable, entrez, make.row.names = TRUE)
 
 #Now set TCGA gene name to Affy Probe ID's. 
 #Note: didn't filter for sensitivity or specificity.
 gene_list <- rownames(degTable)
 gene_list <- gene_list %>% str_remove_all("[:blank:]") %>% str_remove_all("\\-AS[:digit:]") %>% str_remove_all("\\-AS") %>% str_remove_all("\\-") %>% str_to_upper()
+
+#read probe data (annotation):
 mapped_probes <- read_tsv(str_c(as.character(getwd()),"/Data/GeneAnnot_191128_unmerge.tsv"))
 
 mapped_probes <- mapped_probes %>% 
@@ -106,9 +132,9 @@ row_names <- temp[which(temp$V2 %in% gene_list),]
 rm(temp)
 row_names <- row_names[match(gene_list,row_names$V2),]$V1
 row_names <- make.names(row_names, unique = TRUE)
+row.names(degTable) <- row_names 
 
 #Clean up row names of degTable.
-row.names(degTable) <- row_names 
 base::rownames(degTable) <- str_remove_all(base::rownames(degTable),"^X")
 degTable <- degTable[base::grep("NA.", base::rownames(degTable), invert = TRUE),] 
 
@@ -121,35 +147,26 @@ degTable <- degTable %>% dplyr::select("logFC","P.Value","adj.P.Val", "entrez")
 
 #i = 2
 #KEGG_pathway_id = c()
-#for (i in length(KEGG_gene_id)) {
-#    temp <- KEGG_gene_id[i - 1:i]
+#for (i in length(entrez)) {
+#    temp <- entrez[i - 1:i]
  #   temp_list <- keggLink("pathway", temp)
-#    KEGG_pathway_id <- c(KEGG_pathway_id,temp_list)
+#    KEGG_pathway_id <- c(entrez,temp_list)
  #   i = i + 1
 #}
-
-#temp_list <- keggLink("pathway", kegg_gene_id)
+#temp_list <- keggLink("pathway", entrez)
     
-# Both gives an error:"Error in curl::curl_fetch_memory(url, handle = handle) : 
-# Send failure: Connection reset by peer"".
-# But trying this will not give an error:
-
-# a <- kegg_gene_id[1:100]
-# b <- keggLink("pathway", a)
-# head(b) matches gene to pathway.
-# So i am wondering what the error is about. 
-
 
 #Now we download and parse homo sapiens keggPathways using kpg.
 kpg <- keggPathwayGraphs("hsa", updateCache = TRUE, verbose = TRUE)
 
 #Store pathway names in kpn.
-kpn <- keggPathwayNames("hsa", updateCache = TRUE, verbose = TRUE)
+#kpn <- keggPathwayNames("hsa", updateCache = TRUE, verbose = TRUE)
 
 #Finally perform primary disregulation (pDis).
-pDisRes <- pDis(x = degTable$logFC, graphs = kpg, ref = rownames(degTable), nboot = 2000, verbose = FALSE )
+pDisRes <- pDis(x = degTable$logFC, graphs = kpg, ref = degTable$entrez, nboot = 2000, verbose = FALSE )
+
 
 #We have the result of most perturbed pathways ordered by pValue. Stored in "Result". 
-result <- Summary(pDisRes, pathNames = kpn, totalpDis = FALSE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
+#result <- Summary(pDisRes, pathNames = kpn, totalpDis = FALSE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
 
 
