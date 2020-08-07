@@ -6,7 +6,6 @@ rm(list = ls())
 #Call in all relevant packages.
 library(graph)
 library(ROntoTools)
-library(KEGGREST)
 library(GeneBook)
 library(tidyverse)
 library(limma)
@@ -60,7 +59,7 @@ dge_all <- DGEList(rnaseq_all, genes = rownames(rnaseq_all))
 #Calculate normalization factors for voom.
 dge_all <- calcNormFactors(dge_all)
 
-#Create a group matrix for DEG analysis:
+#Create a design matrix for DEG analysis:
 cancer_all <- rep("Cancer",ncol(rnaseq_cancer))
 normal_all <- rep("Normal",ncol(rnaseq_normal))
 vec_all <- c(cancer_all,normal_all)
@@ -79,40 +78,66 @@ degTable <- topTable(temp, sort.by = "P", number = Inf)
 
 #Take out genes that contain "LOC" in degTable: 
 degTable <- dplyr::filter(degTable, !grepl("LOC", rownames(degTable)))
+rm(temp)
+
+base::rownames(degTable) <- make.names(alias2SymbolTable(rownames(degTable), species = "Hs"), unique = TRUE)
+
 
 #We are done with edgeR/limma + voom since we have a DEGTable.
-#Now, convert input TCGA gene symbol to Entrez id using GeneCard package. 
-    
+#Now, convert input TCGA gene symbol to Entrez id using GeneCard package.
+#Clean up genecard_id data:
 gc_list <- as.data.frame((GeneBook::genecard_id))
 gc_list <- dplyr::filter(gc_list, grepl("Entrez", gc_list$subname))
 gc_list$subname <- gsub('"','',gc_list$subname)
 gc_list$subname <- str_replace_all(gc_list$subname, "Entrez Gene: ", "hsa:")
 base::colnames(gc_list) <- c("gene_symbol", "entrez")
 
+#Convert to Entrez id by using inner_join.
 degTable <- degTable %>% select("logFC","P.Value","adj.P.Val") %>% rownames_to_column(var = "gene_symbol") %>%
     inner_join(gc_list, by = "gene_symbol") %>% column_to_rownames(var = "gene_symbol")
 
-#a <- alias2Symbol(rownames(degTable, species = "Hs"))
-
-
-#.SD = subsets all of gc_list except gene (so subname) specified in the "by" argument, and we use lapply to paste the characters together for 
-#subnames and group it by the gene names. 
-#gc_list <- as.data.table(gc_list)
-#collapsed_gc_list <- gc_list[, base::lapply(.SD, paste0, collapse=" "), by=gc_list$gene]
-#collapsed_gc_list <- collapsed_gc_list %>% as.matrix() %>% str_remove_all("[:blank:]") %>% str_to_upper()
-
-#Now match gc_list to rownames(degTable)
-#temp <- rownames(degTable)
-#temp <- str_to_upper(temp)
-#temp <- as.data.frame(temp)
-#colnames(temp) <- "V1"
-#a <- temp[match(temp$V1,collapsed_gc_list),] 
-#temp <- c(temp)
-
+#Alternatively use gprofiler2 package to find entrez id's:
+#library(gprofiler2)
 #entrez <- as.vector(gconvert(query = temp, organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
-#entrez_a <- as.vector(gconvert(query = a, organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
+    
+#Now we download and parse homo sapiens keggPathways using kpg.
+kpg <- keggPathwayGraphs("hsa", updateCache = FALSE, verbose = FALSE)
 
-#Now set TCGA gene name to Affy Probe ID's. 
+#Alternatively:
+#kpg <- keggPathwayGraphs("hsa", targRelTypes = c("GErel", "PCrel", "PPrel"), relPercThres = 0.9, nodeOnlyGraphs = FALSE, updateCache = FALSE, verbose = TRUE)
+kpg <- setEdgeWeights(kpg, edgeTypeAttr = "subtype", edgeWeightByType = list(activation = 1, inhibition = -1, expression = 1, repression = -1), defaultWeight = 0)
+pv <- degTable$P.Value
+kpg <- setNodeWeights(kpg, weights = alphaMLG(pv), defaultWeight = 1)
+
+#Alternatively:
+#kpg <- setNodeWeights(kpg, weights = alpha1MR(pv), defaultWeight = 1)
+
+#Store pathway names in kpn.
+kpn <- keggPathwayNames("hsa", updateCache = FALSE, verbose = TRUE)
+
+#This is to perform cut-off-free analysis.
+x <- degTable$logFC
+names(x) <- degTable$entrez
+ref <- degTable$entrez
+
+#Finally perform primary disregulation (pDis).
+pDisRes <- pDis(x = x, graphs = kpg, ref = ref, nboot = 10000, verbose = FALSE )
+
+#We have the result of most perturbed pathways ordered by pValue of pDis. 
+result_ppDis <- Summary(pDisRes, pathNames = kpn, totalpDis = TRUE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
+View(result_ppDis)
+
+#We have the result of most perturbed pathways ordered by total value of pDis.
+result_totalpDis <- Summary(pDisRes, pathNames = kpn, totalpDis = TRUE, pORA = FALSE, comb.pv = NULL, order.by = "totalpDis")
+View(result_totalpDis)
+
+#Save the results in to a csv file.
+write_csv(result_ppDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_ppDis_10000.csv")
+write_csv(result_totalpDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_totalpDis_10000.csv")
+
+
+#Optional: 
+#This is if you want to set TCGA gene name to Affy Probe ID's. 
 #Note: didn't filter for sensitivity or specificity.
 #gene_list <- rownames(degTable)
 #gene_list <- gene_list %>% str_remove_all("[:blank:]") %>% str_remove_all("\\-AS[:digit:]") %>% str_remove_all("\\-AS") %>% str_remove_all("\\-") %>% str_to_upper()
@@ -137,34 +162,3 @@ degTable <- degTable %>% select("logFC","P.Value","adj.P.Val") %>% rownames_to_c
 #Clean up row names of degTable.
 #base::rownames(degTable) <- str_remove_all(base::rownames(degTable),"^X")
 #degTable <- degTable[base::grep("NA.", base::rownames(degTable), invert = TRUE),] 
-
-#Then, map Entrez id to KEGG hsa (homo sapiens) pathways using KEGGREST package.
-#When supplying KEGG_gene_id at once, it cannot handle the amount of inputs. In fact,
-#it handles around 400 inputs at once. KEGG_gene_id has 17260 outputs. Therefore, we need to create a for loop. 
-
-#i = 2
-#KEGG_pathway_id = c()
-#for (i in length(entrez)) {
-#    temp <- entrez[i - 1:i]
- #   temp_list <- keggLink("pathway", temp)
-#    KEGG_pathway_id <- c(entrez,temp_list)
- #   i = i + 1
-#}
-#temp_list <- keggLink("pathway", entrez)
-    
-#Now we download and parse homo sapiens keggPathways using kpg.
-kpg <- keggPathwayGraphs("hsa", updateCache = FALSE, verbose = TRUE)
-kpg <- setEdgeWeights(kpg, edgeTypeAttr = "subtype", edgeWeightByType = list(activation = 1, inhibition = -1, expression = 1, repression = -1), defaultWeight = 0)
-pv <- degTable$P.Value
-kpg <- setNodeWeights(kpg, weights = alphaMLG(pv))
-
-#Store pathway names in kpn.
-kpn <- keggPathwayNames("hsa", updateCache = FALSE, verbose = TRUE)
-
-#Finally perform primary disregulation (pDis).
-pDisRes <- pDis(x = degTable$logFC, graphs = kpg, ref = degTable$entrez, nboot = 2000, verbose = FALSE )
-
-#We have the result of most perturbed pathways ordered by pValue. Stored in "Result". 
-result <- Summary(pDisRes, pathNames = kpn, totalpDis = FALSE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
-
-
