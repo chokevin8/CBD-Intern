@@ -40,8 +40,8 @@ read_rnaseq <- function(rnaseq_file){
 }
 
 #Use read_rnaseq function to read & clean up the cancer and normal patient's data.
-rnaseq_cancer <- read_rnaseq(str_c(as.character(getwd()),"/Data/RNASeq_PAAD"))
-rnaseq_normal <- read_rnaseq(str_c(as.character(getwd()),"/Data/RNASeq_PAAD_Normal"))
+rnaseq_cancer <- read_rnaseq(str_c(as.character(getwd()),"/Data/RNASeq_LIHC"))
+rnaseq_normal <- read_rnaseq(str_c(as.character(getwd()),"/Data/RNASeq_LIHC_Normal"))
 
 #Combine cancer and normal data into one. 
 rnaseq_all <- cbind(rnaseq_cancer,rnaseq_normal)
@@ -59,7 +59,7 @@ dge_all <- DGEList(rnaseq_all, genes = rownames(rnaseq_all))
 #Calculate normalization factors for voom.
 dge_all <- calcNormFactors(dge_all)
 
-#Create a design matrix for DEG analysis:
+#Create a design matrix for DEG analysis.
 cancer_all <- rep("Cancer",ncol(rnaseq_cancer))
 normal_all <- rep("Normal",ncol(rnaseq_normal))
 vec_all <- c(cancer_all,normal_all)
@@ -69,23 +69,23 @@ design <- model.matrix(~0 + group)
 #Perform TMM normalization & log2CPM, voom does this all by itself.
 voom_all <- voom(dge_all,design, plot = FALSE)$E
 
-#Now perform contrasts and finally perform DGE:
+#Now perform contrasts and finally perform DGE.
 fit <- lmFit(voom_all,design)
 contr <- makeContrasts(groupCancer - groupNormal, levels = colnames(coef(fit)))
 temp <- contrasts.fit(fit, contr)
 temp <- eBayes(temp)
 degTable <- topTable(temp, sort.by = "P", number = Inf)
 
-#Take out genes that contain "LOC" in degTable: 
+#Take out genes that contain "LOC" in degTable.
 degTable <- dplyr::filter(degTable, !grepl("LOC", rownames(degTable)))
 rm(temp)
 
+#Change input gene ID's to official gene ID's that are recognized by the GeneCard package that will subsequently be used. 
 base::rownames(degTable) <- make.names(alias2SymbolTable(rownames(degTable), species = "Hs"), unique = TRUE)
-
 
 #We are done with edgeR/limma + voom since we have a DEGTable.
 #Now, convert input TCGA gene symbol to Entrez id using GeneCard package.
-#Clean up genecard_id data:
+#Clean up genecard_id data.
 gc_list <- as.data.frame((GeneBook::genecard_id))
 gc_list <- dplyr::filter(gc_list, grepl("Entrez", gc_list$subname))
 gc_list$subname <- gsub('"','',gc_list$subname)
@@ -96,7 +96,7 @@ base::colnames(gc_list) <- c("gene_symbol", "entrez")
 degTable <- degTable %>% select("logFC","P.Value","adj.P.Val") %>% rownames_to_column(var = "gene_symbol") %>%
     inner_join(gc_list, by = "gene_symbol") %>% column_to_rownames(var = "gene_symbol")
 
-#Alternatively use gprofiler2 package to find entrez id's:
+#Alternatively use gprofiler2 package to find entrez id's.
 #library(gprofiler2)
 #entrez <- as.vector(gconvert(query = temp, organism = "hsapiens", target = "ENTREZGENE_ACC", mthreshold = Inf, filter_na = TRUE)$target)
     
@@ -121,7 +121,7 @@ names(x) <- degTable$entrez
 ref <- degTable$entrez
 
 #Finally perform primary disregulation (pDis).
-pDisRes <- pDis(x = x, graphs = kpg, ref = ref, nboot = 10000, verbose = FALSE )
+pDisRes <- pDis(x = x, graphs = kpg, ref = ref, nboot = 1000000, verbose = FALSE )
 
 #We have the result of most perturbed pathways ordered by pValue of pDis. 
 result_ppDis <- Summary(pDisRes, pathNames = kpn, totalpDis = TRUE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
@@ -131,10 +131,9 @@ View(result_ppDis)
 result_totalpDis <- Summary(pDisRes, pathNames = kpn, totalpDis = TRUE, pORA = FALSE, comb.pv = NULL, order.by = "totalpDis")
 View(result_totalpDis)
 
-#Save the results in to a csv file.
-write_csv(result_ppDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_ppDis_10000.csv")
-write_csv(result_totalpDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_totalpDis_10000.csv")
-
+#Save the results in to a csv file. We are done now!
+write_csv(result_ppDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_ppDis_1000000.csv")
+write_csv(result_totalpDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_totalpDis_1000000.csv")
 
 #Optional: 
 #This is if you want to set TCGA gene name to Affy Probe ID's. 
