@@ -94,7 +94,7 @@ base::colnames(gc_list) <- c("gene_symbol", "entrez")
 
 #Convert to Entrez id by using inner_join.
 degTable <- degTable %>% select("logFC","P.Value","adj.P.Val") %>% rownames_to_column(var = "gene_symbol") %>%
-    inner_join(gc_list, by = "gene_symbol") %>% column_to_rownames(var = "gene_symbol")
+inner_join(gc_list, by = "gene_symbol") %>% column_to_rownames(var = "gene_symbol")
 
 #Alternatively use gprofiler2 package to find entrez id's.
 #library(gprofiler2)
@@ -121,7 +121,8 @@ names(x) <- degTable$entrez
 ref <- degTable$entrez
 
 #Finally perform primary disregulation (pDis).
-pDisRes <- pDis(x = x, graphs = kpg, ref = ref, nboot = 1000000, verbose = FALSE )
+#After testing, it seems like somewhere between 30000-50000 is a good number for number of bootstrap iterations (nboot). 
+pDisRes <- pDis(x = x, graphs = kpg, ref = ref, nboot = 30000, verbose = FALSE )
 
 #We have the result of most perturbed pathways ordered by pValue of pDis. 
 result_ppDis <- Summary(pDisRes, pathNames = kpn, totalpDis = TRUE, pORA = FALSE, comb.pv = NULL, order.by = "ppDis")
@@ -132,8 +133,9 @@ result_totalpDis <- Summary(pDisRes, pathNames = kpn, totalpDis = TRUE, pORA = F
 View(result_totalpDis)
 
 #Save the results in to a csv file. We are done now!
-write_csv(result_ppDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_ppDis_1000000.csv")
-write_csv(result_totalpDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/PAAD_totalpDis_1000000.csv")
+#Make sure to change the file name.
+write_csv(result_ppDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/LIHC_ppDis_30000.csv")
+write_csv(result_totalpDis, path = "/home/jjkim/Documents/r-project/CBD_Intern/Results/LIHC_totalpDis_30000.csv")
 
 #Optional: 
 #This is if you want to set TCGA gene name to Affy Probe ID's. 
